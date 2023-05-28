@@ -1,0 +1,27 @@
+﻿{% extends 'layout.html' %}
+{% block header %}
+
+<h1>{% block title %}Register{% endblock %} </h1>
+{% endblock %}
+
+{% block content %}
+<h2>Do you really want to delete {{user.first_name}} with records below?</h2>
+<br />
+<img class="pfp" src="/static/Images/{{user["avatar"]}}" />
+<table>
+    <tr>
+        <td>Username:</td>
+        <td>{{ user['first_name'] }}</td>
+    </tr>
+    <tr>
+        <td>Email:</td>
+        <td>{{ user['email'] }}</td>
+    </tr>
+</table>
+<br />
+<form action="/pythonlogin/delete_users" method="post">
+    <input type="hidden" name="user_id" value="{{user.user_id}}">
+    <input type="hidden" name="avatar" value="{{user.avatar}}">
+    <input type="submit" value="Delete">
+</form>
+{% endblock %}

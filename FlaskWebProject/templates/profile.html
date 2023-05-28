@@ -1,0 +1,37 @@
+﻿{% extends 'layout.html' %}
+
+{% block title %}Profile{% endblock %}
+
+{% block content %}
+<h2>Profile Page</h2>
+<div>
+    <p>Your account details are below:</p>
+    {% if account["avatar"] == "" %}
+    <img class="pfp" src="{{ url_for('default_image') }}" alt="Default Image">
+    {% else %}
+    <img class="pfp" src="/static/Images/{{account["avatar"]}}" />
+    {% endif %}
+    <table>
+        <tr>
+            <td>Username:</td>
+            <td>{{ account['first_name'] }}</td>
+        </tr>
+        <tr>
+            <td>Email:</td>
+            <td>{{ account['email'] }}</td>
+        </tr>
+        <tr>
+            <td>
+                <form action="/pythonlogin/update_users?id={{account.user_id}}" method="get">
+                    <input type="hidden" name="user_id" value="{{account.user_id}}" />
+                    <button type="submit"> Update User </button>
+                </form>
+                <form action="/pythonlogin/delete_users?id={{account.user_id}}" method="get">
+                    <input type="hidden" name="user_id" value="{{account.user_id}}" />
+                    <button type="submit"> Delete User </button>
+                </form>
+            </td>
+        </tr>
+    </table>
+</div>
+{% endblock %}
