@@ -567,8 +567,6 @@ def post_comment():
     comment = request.form['comment']
     comment_date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
 
-    print("jasper is cool!")
-
     with create_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(

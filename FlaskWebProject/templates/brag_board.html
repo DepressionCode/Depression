@@ -4,7 +4,6 @@
 
 {% block content %}
 
-<body>
 <div class="container">
     <h1>Brag Board</h1>
     <form method="POST" action="{{ url_for('brag_board') }}" data-board-id="{{ post['board_id'] }}" enctype="multipart/form-data">
@@ -122,13 +121,14 @@
                             </div>
                         {% endif %}
                     </div>
-                    <div class="comment-form">
-                        <form method="POST" action="/pythonlogin/post_comment" data-board-id="{{ post['board_id'] }}">
-                            <input type="hidden" name="board_id" value="{{ post['board_id'] }}">
-                            <textarea id="comment-{{ post['board_id'] }}" name="comment" placeholder="Write a comment..."></textarea>
-                            <button type="submit">Comment</button>
-                        </form>
-                    </div>
+                    <div id="comments-{{ post['board_id'] }}" class="comments">
+                        {% for comment in post.comments %}
+                            <div class="comment">
+                                <p><strong>{{ comment.user_name }}</strong> <em>{{ comment.comment_date }}</em></p>
+                                <p>{{ comment.comment }}</p>
+                            </div>
+                        {% endfor %}
+                    </div>               
                     <div id="comments-{{ post['board_id'] }}" class="comments">
                         {% if post.comment and post.comment_date and post.user_name %}
                             <div class="comment">
@@ -238,25 +238,43 @@
     });
 
     document.querySelectorAll(".comment-form").forEach(function (form) {
-        form.addEventListener("submit", function (event) {
-            event.preventDefault();
+    form.addEventListener("submit", function (event) {
+        event.preventDefault();
 
-            const boardId = form.getAttribute("data-board-id");
-            const comment = document.getElementById("comment-" + boardId).value;
+        const boardId = form.getAttribute("data-board-id");
 
-            // Create a new FormData object
-            const formData = new FormData();
-            formData.append("board_id", boardId);
-            formData.append("comment", comment);
+        // Add console log to check form and boardId
+        console.log('Form submitted:', form, 'Board ID:', boardId);  
 
-            // Now use formData in the AJAX request
-            $.ajax({
-                type: "POST",
-                url: "/pythonlogin/post_comment",
-                data: formData,
-                contentType: false,
-                processData: false,
-                success: function (data) {
+        // Error handling: check if boardId is null
+        if (boardId === null) {
+            console.error('Board ID is null. Check if the "data-board-id" attribute is correctly set for each form.');
+            return;
+        }
+
+        const commentElement = document.getElementById("comment-" + boardId);
+
+        // Error handling: check if commentElement is null
+        if (!commentElement) {
+            console.error('No element with id "comment-' + boardId + '" was found.');
+            return;
+        }
+
+        const comment = commentElement.value;
+
+        // Create a new FormData object
+        const formData = new FormData();
+        formData.append("board_id", boardId);
+        formData.append("comment", comment);
+
+        // Now use formData in the AJAX request
+        $.ajax({
+            type: "POST",
+            url: "/pythonlogin/post_comment",
+            data: formData,
+            contentType: false,
+            processData: false,
+            success: function (data) {
                 // Create a new comment element
                 const newComment = document.createElement("div");
                 newComment.classList.add("comment");
@@ -270,15 +288,14 @@
                 commentsSection.appendChild(newComment);
 
                 // Clear the comment input field
-                document.getElementById("comment-" + boardId).value = "";
-                },
-                error: function (error) {
-                    console.error("Error:", error);
-                },
-            });
+                commentElement.value = "";
+            },
+            error: function (error) {
+                console.error("Error:", error);
+            },
         });
     });
+});
 </script>
-</body>
 {% endblock %}
 {% endblock %}
