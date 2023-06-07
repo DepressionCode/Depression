@@ -567,8 +567,6 @@ def post_comment():
     comment = request.form['comment']
     comment_date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
 
-    print(comment_date, comment, user_id)
-
     with create_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
