@@ -13,7 +13,12 @@ app = Flask(__name__)
 # Change this to your secret key (can be anything, it's for extra protection)
 app.secret_key = 'your secret key'
 app.config["UPLOAD_FOLDER"] = "./static/Images/"
-app.config["UPLOAD_FOLDER2"] = "./static/post_images/"
+app.config['UPLOAD_FOLDER2'] = 'FlaskWebProject/static/post_images/'
+
+UPLOAD_FOLDER2 = app.config['UPLOAD_FOLDER2']
+
+if not os.path.exists(UPLOAD_FOLDER2):
+    os.makedirs(UPLOAD_FOLDER2)
 
 # Make the WSGI interface available at the top level so wfastcgi can get it.
 wsgi_app = app.wsgi_app
@@ -317,7 +322,6 @@ def make_user():
 def brag_board():
     if request.method == "POST":
         # Add new message to database
-        board_id = request.form["board_id"]
         title = request.form["title"]
         date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
         image = request.files["image"]  # Access the image using request.files
@@ -333,7 +337,7 @@ def brag_board():
                     # Generate a unique filename for the post image
                     unique_filename = str(uuid.uuid4()) + "." + image.filename.split('.')[-1]
                     # Save the image to the post_images folder
-                    image.save(os.path.join(app.config["UPLOAD_FOLDER2"], unique_filename))
+                    image.save(os.path.join(UPLOAD_FOLDER2, unique_filename))
 
                     # Set the image filename for the post
                     image_filename = unique_filename
@@ -344,7 +348,6 @@ def brag_board():
         else:
             # Set the image filename to an empty string if there's no image
             image_filename = ""
-
 
         with create_connection() as connection:
             with connection.cursor() as cursor:
@@ -358,19 +361,31 @@ def brag_board():
         with connection.cursor() as cursor:
             # Fetch posts with likes and dislikes count
             cursor.execute("""
-                SELECT tblboard.*, 
-                SUM(tblpostlikes.likes) as likes_count, 
-                SUM(tblpostlikes.dislikes) as dislikes_count 
-                FROM tblboard 
-                LEFT JOIN tblpostlikes ON tblboard.board_id = tblpostlikes.board_id 
-                GROUP BY tblboard.board_id
+                SELECT
+                    tblboard.*,
+                    SUM(tblpostlikes.likes) AS likes_count,
+                    SUM(tblpostlikes.dislikes) AS dislikes_count,
+                    tblcomments.comment,
+                    tblcomments.comment_date,
+                    tblusers.first_name AS user_name
+                FROM
+                    tblboard
+                LEFT JOIN tblpostlikes
+                    ON tblboard.board_id = tblpostlikes.board_id
+                LEFT JOIN tblcomments
+                    ON tblboard.board_id = tblcomments.board_id
+                LEFT JOIN tblusers
+                    ON tblcomments.user_id = tblusers.user_id
+                GROUP BY
+                    tblboard.board_id,
+                    tblcomments.comment_id
             """)
             tblboard = cursor.fetchall()
 
             cursor.execute("SELECT * FROM tblusers")
             accounts = cursor.fetchall()
 
-    return render_template("brag_board.html", tblboard=tblboard, accounts=accounts)
+    return render_template("brag_board.html", tblboard=tblboard, accounts=accounts, post={})  # Pass an empty dictionary as the default value for 'post'
 
 
 @app.route('/pythonlogin/edit_post', methods=['POST'])
@@ -393,6 +408,15 @@ def edit_post():
             if image:
                 if str(image.filename.split('.')[-1]) in ALLOWED_EXTENSIONS:
                     unique_filename = str(uuid.uuid4()) + "." + image.filename.split('.')[-1]
+                    # Before saving a new image, delete the old one
+                    cursor.execute("SELECT image FROM tblboard WHERE board_id = %s", (board_id,))
+                    result = cursor.fetchone()
+                    old_image_filename = result["image"] if result else None
+                    if old_image_filename:
+                        old_image_filepath = os.path.join(app.config["UPLOAD_FOLDER2"], old_image_filename)
+                        if os.path.exists(old_image_filepath):
+                            os.remove(old_image_filepath)
+                    # Save the new image
                     image.save(os.path.join(app.config["UPLOAD_FOLDER2"], unique_filename))
                     image_filename = unique_filename
                 else:
@@ -412,35 +436,42 @@ def edit_post():
             account = cursor.fetchone()
 
             connection.commit()
-            
-            if 'user_id' not in session or 'role_id' not in session:
-                # Log error or return error response
-                return "User id or role id missing from session or account", 500
 
-            return render_template(
-            'brag_board.html',
-            post=post,
-            user_id=session['user_id'],
-            role_id=session['role_id'],
-            author_id=post['user_id'],
-            tblboard=tblboard
-        )
+    return render_template(
+        'brag_board.html',
+        post=post,
+        user_id=session['user_id'],
+        role_id=session['role_id'],
+        author_id=post['user_id'] if post else None,
+        tblboard=tblboard
+    )
 
 
 @app.route("/pythonlogin/delete_post", methods=['GET', 'POST'])
 def delete_post():
     board_id = request.args.get('board_id')
+
     # Connect to the database
     with create_connection() as connection:
         with connection.cursor() as cursor:
             if request.method == "POST":
-                # Delete code here
-                # First, delete likes/dislikes associated with the post
+                # Fetch the filename of the image associated with the post
+                cursor.execute("SELECT image FROM tblboard WHERE board_id = %s", (board_id,))
+                result = cursor.fetchone()
+                image_filename = result["image"] if result else None
+
+                # Delete the image file if it exists
+                if image_filename:
+                    image_filepath = os.path.join(app.config["UPLOAD_FOLDER2"], image_filename)
+                    if os.path.exists(image_filepath):
+                        os.remove(image_filepath)
+
+                # Delete likes/dislikes associated with the post
                 del_likes_sql = '''
                 DELETE FROM tblpostlikes WHERE board_id = %s
                 ''' 
                 cursor.execute(del_likes_sql, (board_id,))
-                
+
                 # Then, delete the post itself
                 del_sql = '''
                 DELETE FROM tblboard WHERE board_id = %s
@@ -464,14 +495,14 @@ def delete_post():
             cursor.execute("SELECT * FROM tblusers WHERE user_id = %s", (session['user_id'],))
             account = cursor.fetchone()
         
-        return render_template(
+    return render_template(
         'brag_board.html',
         post=post,
         user_id=session['user_id'],
         role_id=session['role_id'],
-        author_id=post['user_id']
+        author_id=post['user_id'] if post else None
     )
-    
+   
 
 @app.route("/pythonlogin/like_post", methods=["GET"])
 def like_post():
@@ -528,6 +559,40 @@ def like_post():
         dislikes_count = 0 if counts["dislikes_count"] is None else int(counts["dislikes_count"])
 
     return jsonify({"likes": likes_count, "dislikes": dislikes_count})
+
+@app.route('/pythonlogin/post_comment', methods=['POST'])
+def post_comment():
+    board_id = request.form['board_id']
+    user_id = session['user_id']
+    comment = request.form['comment']
+    comment_date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+
+    print(comment_date, comment, user_id)
+
+    with create_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO tblcomments (user_id, board_id, comment, comment_date) VALUES (%s, %s, %s, %s)",
+                (user_id, board_id, comment, comment_date)
+            )
+            connection.commit()
+
+            # Fetch the newly added comment
+            cursor.execute(
+                """
+                SELECT tblcomments.*, tblusers.first_name as user_name 
+                FROM tblcomments 
+                LEFT JOIN tblusers ON tblcomments.user_id = tblusers.user_id 
+                WHERE tblcomments.comment_id = LAST_INSERT_ID()
+                """
+            )
+            new_comment = cursor.fetchone()
+
+    # Convert the comment_date to a string
+    new_comment["comment_date"] = new_comment["comment_date"].strftime('%Y-%m-%d %H:%M:%S')
+
+    # Return the new comment as JSON response
+    return jsonify(new_comment)
 
 
 if __name__ == '__main__':
