@@ -363,29 +363,69 @@ def brag_board():
             cursor.execute("""
                 SELECT
                     tblboard.*,
-                    SUM(tblpostlikes.likes) AS likes_count,
-                    SUM(tblpostlikes.dislikes) AS dislikes_count,
-                    tblcomments.comment,
-                    tblcomments.comment_date,
-                    tblusers.first_name AS user_name
+                    tblusers.first_name AS user_name,
+                    COALESCE(SUM(tblpostlikes.likes), 0) as likes_count,
+                    COALESCE(SUM(tblpostlikes.dislikes), 0) as dislikes_count
                 FROM
                     tblboard
+                LEFT JOIN tblusers
+                    ON tblboard.user_id = tblusers.user_id
                 LEFT JOIN tblpostlikes
                     ON tblboard.board_id = tblpostlikes.board_id
-                LEFT JOIN tblcomments
-                    ON tblboard.board_id = tblcomments.board_id
-                LEFT JOIN tblusers
-                    ON tblcomments.user_id = tblusers.user_id
                 GROUP BY
                     tblboard.board_id,
-                    tblcomments.comment_id
+                    tblusers.user_id
+                ORDER BY tblboard.date DESC
             """)
-            tblboard = cursor.fetchall()
+            posts = cursor.fetchall()
 
+            for post in posts:
+                cursor.execute("""
+                    SELECT
+                        tblcomments.comment,
+                        tblcomments.comment_date,
+                        tblusers.first_name AS user_name,
+                        tblcomments.user_id AS user_id
+                    FROM
+                        tblcomments
+                    LEFT JOIN tblusers
+                        ON tblcomments.user_id = tblusers.user_id
+                    WHERE
+                        tblcomments.board_id = %s
+                """, (post["board_id"],))
+                comments = cursor.fetchall()
+                
+                for comment in comments:
+                    # Set the can_delete flag for each comment
+                    comment['can_delete'] = comment['user_id'] == session["user_id"]
+
+                post["comments"] = comments
+
+                # Fetch likes and dislikes
+                cursor.execute("""
+                    SELECT
+                        SUM(likes) AS likes_count,
+                        SUM(dislikes) AS dislikes_count
+                    FROM
+                        tblpostlikes
+                    WHERE
+                        tblpostlikes.board_id = %s
+                """, (post["board_id"],))
+                likes_dislikes = cursor.fetchone()
+                post["likes"] = likes_dislikes["likes_count"] or 0
+                post["dislikes"] = likes_dislikes["dislikes_count"] or 0
+
+            # Fetch users
             cursor.execute("SELECT * FROM tblusers")
             accounts = cursor.fetchall()
 
-    return render_template("brag_board.html", tblboard=tblboard, accounts=accounts, post={})  # Pass an empty dictionary as the default value for 'post'
+            # Fetch the current user's data
+            cursor.execute("SELECT * FROM tblusers WHERE user_id = %s", (session["user_id"],))
+            user = cursor.fetchone()
+
+    post = {}  # Initialize post as an empty dictionary
+
+    return render_template("brag_board.html", tblboard=posts, accounts=accounts, data=user, post=post)
 
 
 @app.route('/pythonlogin/edit_post', methods=['POST'])
@@ -400,9 +440,6 @@ def edit_post():
 
     with create_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM tblboard")
-            tblboard = cursor.fetchall()
-            
             image_filename = None
 
             if image:
@@ -427,6 +464,8 @@ def edit_post():
             else:
                 cursor.execute("UPDATE tblboard SET title=%s, brag=%s WHERE board_id=%s", (title, brag, board_id))
 
+            connection.commit()
+
             # fetch the updated post
             cursor.execute("SELECT * FROM tblboard WHERE board_id = %s", (board_id,))
             post = cursor.fetchone()
@@ -435,7 +474,11 @@ def edit_post():
             cursor.execute("SELECT * FROM tblusers WHERE user_id = %s", (session['user_id'],))
             account = cursor.fetchone()
 
-            connection.commit()
+    with create_connection() as connection:
+        with connection.cursor() as cursor:
+            # fetch the updated tblboard data
+            cursor.execute("SELECT * FROM tblboard")
+            tblboard = cursor.fetchall()
 
     return render_template(
         'brag_board.html',
@@ -454,11 +497,28 @@ def delete_post():
     # Connect to the database
     with create_connection() as connection:
         with connection.cursor() as cursor:
+            # fetch the post
+            board_sql = '''
+            SELECT * from tblboard
+            WHERE
+            board_id = %s
+            '''
+            cursor.execute(board_sql, (board_id,))
+            post = cursor.fetchone()
+
+            # check if the post exists
+            if post is None:
+                flash("Post not found.")
+                return redirect('/pythonlogin/brag_board')
+
+            # check if the user is allowed to delete the post
+            if session['user_id'] != post['user_id'] and session['role_id'] != 1:
+                flash("You are not authorized to delete this post.")
+                return redirect('/pythonlogin/brag_board')
+
             if request.method == "POST":
                 # Fetch the filename of the image associated with the post
-                cursor.execute("SELECT image FROM tblboard WHERE board_id = %s", (board_id,))
-                result = cursor.fetchone()
-                image_filename = result["image"] if result else None
+                image_filename = post["image"]
 
                 # Delete the image file if it exists
                 if image_filename:
@@ -469,40 +529,37 @@ def delete_post():
                 # Delete likes/dislikes associated with the post
                 del_likes_sql = '''
                 DELETE FROM tblpostlikes WHERE board_id = %s
-                ''' 
+                '''
                 cursor.execute(del_likes_sql, (board_id,))
 
                 # Then, delete the post itself
                 del_sql = '''
                 DELETE FROM tblboard WHERE board_id = %s
-                ''' 
+                '''
                 cursor.execute(del_sql, (board_id,))
-                
-                connection.commit()
-                
-                return redirect('/pythonlogin/brag_board')
 
-            # fetch the post
-            board_sql = '''
-            SELECT * from tblboard
-            WHERE
-            board_id = %s
-            '''
-            cursor.execute(board_sql, (board_id,))
-            post = cursor.fetchone()
+                connection.commit()
+
+                flash("Post successfully deleted.")
+                return redirect('/pythonlogin/brag_board')
 
             # fetch the current user's account information
             cursor.execute("SELECT * FROM tblusers WHERE user_id = %s", (session['user_id'],))
             account = cursor.fetchone()
-        
+
+            # fetch the updated tblboard data
+            cursor.execute("SELECT * FROM tblboard")
+            tblboard = cursor.fetchall()
+
     return render_template(
         'brag_board.html',
         post=post,
         user_id=session['user_id'],
         role_id=session['role_id'],
-        author_id=post['user_id'] if post else None
+        author_id=post['user_id'] if post else None,
+        tblboard=tblboard
     )
-   
+
 
 @app.route("/pythonlogin/like_post", methods=["GET"])
 def like_post():
@@ -560,37 +617,69 @@ def like_post():
 
     return jsonify({"likes": likes_count, "dislikes": dislikes_count})
 
-@app.route('/pythonlogin/post_comment', methods=['POST'])
-def post_comment():
-    board_id = request.form['board_id']
-    user_id = session['user_id']
-    comment = request.form['comment']
-    comment_date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+
+@app.route('/pythonlogin/add_comment', methods=['POST'])
+def add_comment():
+    connection = create_connection()  # Initialize the connection variable
+
+    try:
+        comment = request.form['comment']
+        comment_date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+        board_id = request.form['board_id']
+        user_id = session['user_id']
+
+        with connection.cursor() as cursor:
+            cursor.execute("INSERT INTO tblcomments (comment, comment_date, board_id, user_id) VALUES (%s, %s, %s, %s)", (comment, comment_date, board_id, user_id))
+            connection.commit()
+
+            # Fetch the comment that was just inserted, along with the user's name
+            cursor.execute("""
+                SELECT
+                    tblcomments.*,
+                    tblusers.first_name AS user_name,
+                    tblusers.user_id AS user_id
+                FROM
+                    tblcomments
+                LEFT JOIN tblusers
+                    ON tblcomments.user_id = tblusers.user_id
+                WHERE
+                    tblcomments.comment_id = %s
+            """, (cursor.lastrowid,))
+            new_comment = cursor.fetchone()
+
+        # Return the new comment as JSON
+        return jsonify(new_comment)
+
+    finally:
+        if connection:
+            connection.close()
+
+
+@app.route('/pythonlogin/delete_comment', methods=['POST'])
+def delete_comment():
+    comment_id = request.form.get('comment_id')
+
+    if not comment_id:
+        return "Invalid input", 400
 
     with create_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                "INSERT INTO tblcomments (user_id, board_id, comment, comment_date) VALUES (%s, %s, %s, %s)",
-                (user_id, board_id, comment, comment_date)
-            )
+            # Fetch the comment to check if it exists and get the associated board_id
+            cursor.execute("SELECT * FROM tblcomments WHERE comment_id = %s", (comment_id,))
+            comment = cursor.fetchone()
+
+            if not comment:
+                return "Comment not found", 404
+
+            # Check if the user is authorized to delete the comment
+            if session['user_id'] != comment['user_id']:
+                return "Unauthorized", 403
+
+            # Delete the comment
+            cursor.execute("DELETE FROM tblcomments WHERE comment_id = %s", (comment_id,))
             connection.commit()
 
-            # Fetch the newly added comment
-            cursor.execute(
-                """
-                SELECT tblcomments.*, tblusers.first_name as user_name 
-                FROM tblcomments 
-                LEFT JOIN tblusers ON tblcomments.user_id = tblusers.user_id 
-                WHERE tblcomments.comment_id = LAST_INSERT_ID()
-                """
-            )
-            new_comment = cursor.fetchone()
-
-    # Convert the comment_date to a string
-    new_comment["comment_date"] = new_comment["comment_date"].strftime('%Y-%m-%d %H:%M:%S')
-
-    # Return the new comment as JSON response
-    return jsonify(new_comment)
+    return "Comment successfully deleted"
 
 
 if __name__ == '__main__':

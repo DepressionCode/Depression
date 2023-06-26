@@ -48,13 +48,6 @@
                 </form>
                 {% endif %}
 
-                {% if data['role_id'] == 1 %}
-                <form action="/pythonlogin/make_user" method="post">
-                    <input type="hidden" name="user_id" value="{{data.user_id}}" />
-                    <button type="submit"> Make User </button>
-                </form>
-                {% endif %}
-
                 <form action="/pythonlogin/update_users?id={{data.user_id}}" method="get">
                     <input type="hidden" name="user_id" value="{{data.user_id}}" />
                     <button type="submit"> Update User </button>

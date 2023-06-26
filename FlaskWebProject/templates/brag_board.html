@@ -6,7 +6,7 @@
 
 <div class="container">
     <h1>Brag Board</h1>
-    <form method="POST" action="{{ url_for('brag_board') }}" data-board-id="{{ post['board_id'] }}" enctype="multipart/form-data">
+    <form method="POST" action="{{ url_for('brag_board') }}" enctype="multipart/form-data">
         <input type="hidden" name="board_id" value="{{tblboard['board_id']}}">
         <label for="title">
             Title Of Post:
@@ -32,174 +32,180 @@
         <br>
         <input type="submit" value="Submit">
     </form>
-    {% if tblboard %}
-    {% else %}
-    <p>No brags yet. Be the first to brag!</p>
-    {% endif %}
 </div>
-{% for post in tblboard %}
-    {% for data in accounts %}
-        {% if data['user_id'] == post['user_id'] %}
-            <div class="row">
-                <div class="col-4">
-                    <div class="row">
-                        <div class="col-12">
-                            {% if data["avatar"] == "" %}
-                            <img class="pfp" src="{{ url_for('default_image') }}" alt="Default Image">
-                            {% else %}
-                            <img class="pfp" src="/static/Images/{{data["avatar"]}}" />
-                            {% endif %}
-                            <table>
-                                <tr>
-                                    <td>Username:</td>
-                                    <td>{{ data['first_name'] }}</td>
-                                </tr>
-                                <tr>
-                                    <td>Date And Time:</td>
-                                    <td>{{ post['date'] }}</td>
-                                </tr>
-                            </table>
-                        </div>
+
+{% if tblboard %}
+    {% for post in tblboard %}
+        <div class="row">
+            <div class="col-4">
+                <div class="row">
+                    <div class="col-12">
+                        {% if data["avatar"] == "" %}
+                        <img class="pfp" src="{{ url_for('default_image') }}" alt="Default Image">
+                        {% else %}
+                        <img class="pfp" src="/static/Images/{{data["avatar"]}}" />
+                        {% endif %}
+                        <table>
+                            <tr>
+                                <td>Username:</td>
+                                <td>{{ data['first_name'] }}</td>
+                            </tr>
+                            <tr>
+                                <td>Date And Time:</td>
+                                <td>{{ post['date'] }}</td>
+                            </tr>
+                        </table>
                     </div>
                 </div>
-                <div class="col-8">
-                    <div class="row">
-                        <h4>{{post['title']}}</h4>
-                        <p style="overflow-wrap:break-word;">{{post['brag']}}</p>
-                        {% if post["image"] %}
-                        <img class="img image-fit" src="{{ url_for('static', filename='post_images/' + post['image']) }}" />
-                        {% endif %}
+            </div>
+            <div class="col-8">
+                <div class="row">
+                    <h4>{{post['title']}}</h4>
+                    <p style="overflow-wrap:break-word;">{{post['brag']}}</p>
+                    {% if post["image"] %}
+                    <img class="img image-fit" src="{{ url_for('static', filename='post_images/' + post['image']) }}" />
+                    {% endif %}
 
-                        <div class="col-12">
-                            <p id="likes-{{ post['board_id'] }}">Likes: {{ post['likes_count'] or 0 }}</p>
-                            <p id="dislikes-{{ post['board_id'] }}">Dislikes: {{ post['dislikes_count'] or 0 }}</p>
-                            <button class="like-btn" data-board-id="{{post['board_id']}}" data-action-status="true">Like</button>
-                            <button class="dislike-btn" data-board-id="{{post['board_id']}}" data-action-status="false">Dislike</button>
+                    <div class="col-12">
+                        <p id="likes-{{ post['board_id'] }}">Likes: {{ post['likes_count'] or 0 }}</p>
+                        <p id="dislikes-{{ post['board_id'] }}">Dislikes: {{ post['dislikes_count'] or 0 }}</p>
+                        <button class="like-btn" data-board-id="{{post['board_id']}}" data-action-status="true">Like</button>
+                        <button class="dislike-btn" data-board-id="{{post['board_id']}}" data-action-status="false">Dislike</button>
+                    </div>
+
+                    <br>
+                    <br>
+                    <hr />
+                    <!-- Print the values -->
+
+                    {% if session["user_id"] == post['user_id'] or session["role_id"] == 1 %}
+                        <div class="col-6">
+                            <!-- Add this hidden edit form inside the loop for posts -->
+                            {% if session["user_id"] == post['user_id'] %}
+                                <div class="edit-form-container" id="edit-form-{{post['board_id']}}" style="display:none;">
+                                    <h3>Edit Post</h3>
+                                    <form class="edit-form" data-board-id="{{post['board_id']}}">
+                                        <label for="edit-title-{{post['board_id']}}">Title Of Post:</label>
+                                        <br>
+                                        <input type="text" id="edit-title-{{post['board_id']}}" value="{{post['title']}}" required>
+                                        <br>
+                                        <br>
+                                        <label for="edit-image-{{post['board_id']}}"> Image </label>
+                                        <br>
+                                        <input type="file" id="edit-image-{{post['board_id']}}" name="image" accept="image/*" />
+                                        <br>
+                                        <br>
+                                        <label for="edit-brag-{{post['board_id']}}">Type Your Post Here:</label>
+                                        <br>
+                                        <br>
+                                        <textarea id="edit-brag-{{post['board_id']}}" rows="4" cols="50">{{post['brag']}}</textarea>
+                                        <br>
+                                        <br>
+                                        <button type="submit">Update</button>
+                                        <button class="cancel-edit" data-board-id="{{post['board_id']}}">Cancel</button>
+                                    </form>
+                                </div>
+
+                                <!-- Update the Edit Post button -->
+                                <button class="edit-post" id="edit_button-{{post['board_id']}}" data-board-id="{{post['board_id']}}">Edit Post</button>
+                            {% endif %}
+
+                            <!-- Only show the delete button if the user is the author or an admin -->
+                            <form action="{{ url_for('delete_post', board_id=post.board_id) }}" method="POST">
+                                <input type="submit" value="Delete" onclick="if (confirm('Are you SURE you wish to delete this post?')) history.back();">
+                            </form>
                         </div>
+                    {% endif %}
 
-                        <br>
-                        <br>
-                        <hr />
-                        <!-- Print the values -->
-
-                        {% if session["user_id"] == post['user_id'] or session["role_id"] == 1 %}
-                            <div class="col-6">
-                                <!-- Add this hidden edit form inside the loop for posts -->
-                                {% if session["user_id"] == post['user_id'] %}
-                                    <div class="edit-form-container" id="edit-form-{{post['board_id']}}" style="display:none;">
-                                        <h3>Edit Post</h3>
-                                        <form class="edit-form" data-board-id="{{post['board_id']}}">
-                                            <label for="edit-title-{{post['board_id']}}">Title Of Post:</label>
-                                            <br>
-                                            <input type="text" id="edit-title-{{post['board_id']}}" value="{{post['title']}}" required>
-                                            <br>
-                                            <br>
-                                            <label for="edit-image-{{post['board_id']}}"> Image </label>
-                                            <br>
-                                            <input type="file" id="edit-image-{{post['board_id']}}" name="image" accept="image/*" />
-                                            <br>
-                                            <br>
-                                            <label for="edit-brag-{{post['board_id']}}">Type Your Post Here:</label>
-                                            <br>
-                                            <br>
-                                            <textarea id="edit-brag-{{post['board_id']}}" rows="4" cols="50">{{post['brag']}}</textarea>
-                                            <br>
-                                            <br>
-                                            <button type="submit">Update</button>
-                                            <button class="cancel-edit" data-board-id="{{post['board_id']}}">Cancel</button>
-                                        </form>
-                                    </div>
-
-                                    <!-- Update the Edit Post button -->
-                                    <button class="edit-post" id="edit_button-{{post['board_id']}}" data-board-id="{{post['board_id']}}">Edit Post</button>
-                                {% endif %}
-
-                                <!-- Only show the delete button if the user is the author or an admin -->
-                                <form action="{{ url_for('delete_post', board_id=post.board_id) }}" method="POST">
-                                    <input type="submit" value="Delete" onclick="if (confirm('Are you SURE you wish to delete this post?')) history.back();">
-                                </form>
-                            </div>
-                        {% endif %}
+                    <div class="comment-form" data-board-id="{{ post['board_id'] }}">
+                        <form method="POST" action="/pythonlogin/add_comment">
+                        <input type="hidden" name="board_id" value="{{ post['board_id'] }}">
+                        <textarea id="comment-{{ post['board_id'] }}" name="comment" placeholder="Write a comment..."></textarea>
+                        <button type="submit">Comment</button>
+                        </form>
                     </div>
                     <div id="comments-{{ post['board_id'] }}" class="comments">
                         {% for comment in post.comments %}
-                            <div class="comment">
-                                <p><strong>{{ comment.user_name }}</strong> <em>{{ comment.comment_date }}</em></p>
-                                <p>{{ comment.comment }}</p>
+                        <div class="comment">
+                            <p><strong>{{ comment['user_name'] }}</strong> <em>{{ comment['comment_date'] }}</em></p>
+                            <p>{{ comment['comment'] }}</p>
+                            {% if session["user_id"] == comment['user_id'] %}
+                            <div class="delete-comment-form" data-comment-id="{{ comment['comment_id'] }}">
+                                <form action="{{ url_for('delete_comment') }}" method="POST">
+                                    <input type="hidden" name="comment_id" value="{{ comment['comment_id'] }}">
+                                    <button type="submit" class="delete-comment-btn">Delete</button>
+                                </form>
                             </div>
+                            {% endif %}
+                        </div>
                         {% endfor %}
-                    </div>               
-                    <div id="comments-{{ post['board_id'] }}" class="comments">
-                        {% if post.comment and post.comment_date and post.user_name %}
-                            <div class="comment">
-                                <p><strong>{{ post.user_name }}</strong> <em>{{ post.comment_date }}</em></p>
-                                <p>{{ post.comment }}</p>
-                            </div>
-                        {% endif %}
-                    </div>                     
+                    </div>                                                                                         
                 </div>
             </div>
-        {% endif %}
+        </div>
     {% endfor %}
-{% endfor %}
+{% else %}
+    <p>No brags yet. Be the first to brag!</p>
+{% endif %}
+
 
 {% block script %}
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
 <script>
-    document.querySelectorAll(".edit-post").forEach(function (button) {
-        button.addEventListener("click", function () {
-            const boardId = button.getAttribute("data-board-id");
-            document.getElementById("edit-form-" + boardId).style.display = "block";
-            document.getElementById("edit_button-" + boardId).style.display = "none";
-        });
+document.querySelectorAll(".edit-post").forEach(function (button) {
+    button.addEventListener("click", function () {
+        const boardId = button.getAttribute("data-board-id");
+        document.getElementById("edit-form-" + boardId).style.display = "block";
+        document.getElementById("edit_button-" + boardId).style.display = "none";
     });
-    
-    document.querySelectorAll(".cancel-edit").forEach(function (button) {
-        button.addEventListener("click", function () {
-            const boardId = button.getAttribute("data-board-id");
-            document.getElementById("edit-form-" + boardId).style.display = "none";
-            document.getElementById("edit_button-" + boardId).style.display = "block";
-        });
-    });    
+});
 
-    document.querySelectorAll(".edit-form").forEach(function (form) {
-        form.addEventListener("submit", function (event) {
-            event.preventDefault();
+document.querySelectorAll(".cancel-edit").forEach(function (button) {
+    button.addEventListener("click", function () {
+        const boardId = button.getAttribute("data-board-id");
+        document.getElementById("edit-form-" + boardId).style.display = "none";
+        document.getElementById("edit_button-" + boardId).style.display = "block";
+    });
+});
 
-            const boardId = form.getAttribute("data-board-id");
-            const title = document.getElementById("edit-title-" + boardId).value;
-            const brag = document.getElementById("edit-brag-" + boardId).value;
+document.querySelectorAll(".edit-form").forEach(function (form) {
+    form.addEventListener("submit", function (event) {
+        event.preventDefault();
 
-            const formData = new FormData();
-            formData.append("board_id", boardId);
-            formData.append("title", title);
-            formData.append("brag", brag);
+        const boardId = form.getAttribute("data-board-id");
+        const title = document.getElementById("edit-title-" + boardId).value;
+        const brag = document.getElementById("edit-brag-" + boardId).value;
 
-            const imageFile = document.getElementById("edit-image-" + boardId).files[0];
-            if (imageFile) {
-                formData.append("image", imageFile);
+        const formData = new FormData();
+        formData.append("board_id", boardId);
+        formData.append("title", title);
+        formData.append("brag", brag);
+
+        const imageFile = document.getElementById("edit-image-" + boardId).files[0];
+        if (imageFile) {
+            formData.append("image", imageFile);
+        }
+
+        fetch("/pythonlogin/edit_post", {
+            method: "POST",
+            body: formData,
+        })
+        .then(function (response) {
+            if (response.ok) {
+                location.reload();
+            } else {
+                alert("An error occurred while updating the post.");
             }
-
-            fetch("/pythonlogin/edit_post", {
-                method: "POST",
-                body: formData,
-            })
-            .then(function (response) {
-                if (response.ok) {
-                    location.reload();
-                } else {
-                    alert("An error occurred while updating the post.");
-                }
-            });
         });
     });
+});
 
-    $(".like-btn, .dislike-btn").click(function (event) {
-        console.log("Button clicked");  // Add this line
-        event.preventDefault();  // prevent the form from submitting normally
+document.querySelectorAll(".like-btn, .dislike-btn").forEach(function (button) {
+    button.addEventListener("click", function (event) {
+        event.preventDefault();
 
-        var board_id = $(this).data("board-id");
-        var like = $(this).hasClass("like-btn");
+        var board_id = button.getAttribute("data-board-id");
+        var like = button.classList.contains("like-btn");
 
         $.ajax({
             type: "GET",
@@ -211,91 +217,97 @@
             },
             error: function (error) {
                 console.log(error);
-            }
-        });
-    });
-
-    document.querySelectorAll(".like-btn, .dislike-btn").forEach(function (button) {
-        button.addEventListener("click", function (event) {
-            event.preventDefault();
-
-            var board_id = button.getAttribute("data-board-id");
-            var like = button.classList.contains("like-btn");
-
-            $.ajax({
-                type: "GET",
-                url: "/pythonlogin/like_post",
-                data: { board_id: board_id, like: like },
-                success: function (response) {
-                    $("#likes-" + board_id).text("Likes: " + response.likes);
-                    $("#dislikes-" + board_id).text("Dislikes: " + response.dislikes);
-                },
-                error: function (error) {
-                    console.log(error);
-                },
-            });
-        });
-    });
-
-    document.querySelectorAll(".comment-form").forEach(function (form) {
-    form.addEventListener("submit", function (event) {
-        event.preventDefault();
-
-        const boardId = form.getAttribute("data-board-id");
-
-        // Add console log to check form and boardId
-        console.log('Form submitted:', form, 'Board ID:', boardId);  
-
-        // Error handling: check if boardId is null
-        if (boardId === null) {
-            console.error('Board ID is null. Check if the "data-board-id" attribute is correctly set for each form.');
-            return;
-        }
-
-        const commentElement = document.getElementById("comment-" + boardId);
-
-        // Error handling: check if commentElement is null
-        if (!commentElement) {
-            console.error('No element with id "comment-' + boardId + '" was found.');
-            return;
-        }
-
-        const comment = commentElement.value;
-
-        // Create a new FormData object
-        const formData = new FormData();
-        formData.append("board_id", boardId);
-        formData.append("comment", comment);
-
-        // Now use formData in the AJAX request
-        $.ajax({
-            type: "POST",
-            url: "/pythonlogin/post_comment",
-            data: formData,
-            contentType: false,
-            processData: false,
-            success: function (data) {
-                // Create a new comment element
-                const newComment = document.createElement("div");
-                newComment.classList.add("comment");
-                newComment.innerHTML = `
-                    <p><strong>${data.user_name}</strong> <em>${data.comment_date}</em></p>
-                    <p>${data.comment}</p>
-                `;
-
-                // Append the new comment to the corresponding post
-                const commentsSection = document.querySelector(`#comments-${boardId}`);
-                commentsSection.appendChild(newComment);
-
-                // Clear the comment input field
-                commentElement.value = "";
-            },
-            error: function (error) {
-                console.error("Error:", error);
             },
         });
     });
 });
+
+
+document.querySelectorAll(".comment-form").forEach(function (form) {
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+
+    const boardId = form.getAttribute("data-board-id");
+    const commentElement = document.getElementById("comment-" + boardId);
+    const comment = commentElement.value;
+
+    const formData = new FormData();
+    formData.append("board_id", boardId);
+    formData.append("comment", comment);
+
+    // Now use formData in the AJAX request
+    $.ajax({
+      type: "POST",
+      url: "/pythonlogin/add_comment",
+      data: formData,
+      contentType: false,
+      processData: false,
+      success: function (data) {
+        // Create a new comment element
+        const newComment = document.createElement("div");
+        newComment.classList.add("comment");
+        newComment.innerHTML = `
+          <p><strong>${data.user_name}</strong> <em>${data.comment_date}</em></p>
+          <p>${data.comment}</p>
+        `;
+
+        newComment.setAttribute("data-comment-id", data.comment_id);
+
+        // Append the new comment to the corresponding post
+        const commentsSection = document.querySelector(`#comments-${boardId}`);
+        commentsSection.appendChild(newComment);
+
+        // Clear the comment input field
+        commentElement.value = "";
+
+        // Only show the delete button if the user is the author or an admin
+        const userId = "{{ session['user_id'] }}";
+        if (userId == data.user_id) {
+          const deleteForm = document.createElement("div");
+          deleteForm.classList.add("delete-comment-form");
+          deleteForm.innerHTML = `
+            <form action="{{ url_for('delete_comment') }}" method="POST">
+              <input type="hidden" name="comment_id" value="${data.comment_id}">
+              <button type="submit" class="delete-comment-btn">Delete</button>
+            </form>
+          `;
+          newComment.appendChild(deleteForm);
+
+          const deleteButton = newComment.querySelector(".delete-comment-btn");
+          if (deleteButton) {
+            deleteButton.addEventListener("click", deleteComment);
+          }
+        }
+      },
+      error: function (error) {
+        console.error("Error:", error);
+      },
+    });
+  });
+});
+
+
+function deleteComment(event) {
+  event.preventDefault();
+
+  const button = event.target;
+  const commentId = button.parentNode.querySelector('input[name="comment_id"]').value;
+
+  // Now use commentId in the AJAX request
+  $.ajax({
+    type: "POST",
+    url: "/pythonlogin/delete_comment",
+    data: { comment_id: commentId },
+    success: function (response) {
+      // Remove the deleted comment from the UI
+      const comment = document.querySelector(`.comment[data-comment-id="${commentId}"]`);
+      comment.parentNode.removeChild(comment);
+    },
+    error: function (error) {
+      console.error("Error:", error);
+    },
+  });
+}
 </script>
 {% endblock %}
 {% endblock %}
