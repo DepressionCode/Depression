@@ -657,9 +657,15 @@ def add_comment():
 
 @app.route('/pythonlogin/delete_comment', methods=['POST'])
 def delete_comment():
+    print(request.form)  # let's print the entire form data
     comment_id = request.form.get('comment_id')
 
+    print(comment_id)
+
+    app.logger.info(f"Received delete_comment request. comment_id: {comment_id}")
+
     if not comment_id:
+        app.logger.error("Invalid input: comment_id is missing")
         return "Invalid input", 400
 
     with create_connection() as connection:
@@ -680,6 +686,36 @@ def delete_comment():
             connection.commit()
 
     return "Comment successfully deleted"
+
+
+@app.route('/pythonlogin/edit_comment', methods=['POST'])
+def edit_comment():
+    comment_id = request.form.get('comment_id')
+    comment = request.form.get('new_comment')
+
+    print(comment_id)
+
+    app.logger.info(f"Received edit_comment request. comment_id: {comment_id}, comment: {comment}")
+
+    if not comment_id or not comment:
+        app.logger.error("Invalid input: comment_id or comment is missing")
+        return "Invalid input", 400
+
+    with create_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM tblcomments WHERE comment_id = %s", (comment_id,))
+            comment = cursor.fetchone()
+
+            if not comment:
+                return "Comment not found", 404
+
+            if session['user_id'] != comment['user_id']:
+                return "Unauthorized", 403
+
+            cursor.execute("UPDATE tblcomments SET comment = %s WHERE comment_id = %s", (comment, comment_id))
+            connection.commit()
+
+    return "Comment successfully updated"
 
 
 if __name__ == '__main__':
