@@ -51,7 +51,7 @@
                                 <td>{{ data['first_name'] }}</td>
                             </tr>
                             <tr>
-                                <td>Date And Time:</td>
+                                <td>Time Posted:</td>
                                 <td>{{ post['date'] }}</td>
                             </tr>
                         </table>
@@ -111,9 +111,7 @@
                             {% endif %}
 
                             <!-- Only show the delete button if the user is the author or an admin -->
-                            <form action="{{ url_for('delete_post', board_id=post.board_id) }}" method="POST">
-                                <input type="submit" value="Delete" onclick="if (confirm('Are you SURE you wish to delete this post?')) history.back();">
-                            </form>
+                            <button class="delete-post" id="delete_button-{{post['board_id']}}" data-board-id="{{post['board_id']}}" onclick="if (confirm('Are you SURE you wish to delete this post?')) history.back();">Delete Post</button>
                         </div>
                     {% endif %}
 
@@ -125,7 +123,7 @@
                         </form>
                     </div>
                     <div id="comments-{{ post['board_id'] }}" class="comments">
-                        {% for comment in post.comments %}
+                        {% for comment in post['comments'] %}
                             <div class="comment" data-comment-id="{{ comment['comment_id'] }}">
                                 <p><strong>{{ comment['user_name'] }}</strong> <em>{{ comment['comment_date'] }}</em></p>
                                 <p>{{ comment['comment'] }}</p>
@@ -230,34 +228,6 @@ document.querySelectorAll(".like-btn, .dislike-btn").forEach(function (button) {
 });
 
 
-// Function to handle deletion of comments
-function handleDeleteComment(event) {
-    event.preventDefault();
-    
-    var commentId = $(this).data("comment-id");
-    console.log(commentId);  // Debug: print the retrieved comment_id to console
-
-    if (confirm("Are you sure you want to delete this comment?")) {
-        $.ajax({
-            type: "POST",
-            url: "/pythonlogin/delete_comment",
-            data: { comment_id: commentId },
-            success: function (response) {
-                $(`.comment[data-comment-id="${commentId}"]`).remove();
-            },
-            error: function (xhr, status, error) {
-                console.error("Error:", error);
-                alert("An error occurred while deleting the comment.");
-            },
-        });
-    }
-};
-
-$(document).ready(function () {
-    // Attach delete handler to existing delete buttons
-    $(".delete-comment-btn").click(handleDeleteComment);
-});
-
 document.querySelectorAll(".comment-form").forEach(function (form) {
     form.addEventListener("submit", function (event) {
         event.preventDefault();
@@ -298,6 +268,22 @@ document.querySelectorAll(".comment-form").forEach(function (form) {
                 // Only show the delete button if the user is the author or an admin
                 const userId = "{{ session['user_id'] }}";
                 if (userId == data.user_id) {
+                    const editForm = document.createElement("div");
+                    editForm.classList.add("delete-comment-form");
+                    editForm.innerHTML = `
+                    <form action="{{ url_for('edit_comment') }}" method="POST">
+                        <input type="hidden" name="comment_id" value="${data.comment_id}">
+                        <button type="submit" class="edit-comment-btn">Edit</button>
+                    </form>
+                    `;
+                    newComment.appendChild(editForm);
+
+                    const editButton = newComment.querySelector(".edit-comment-btn");
+                    if (editButton) {
+                        editButton.addEventListener("click", handleEditComment);
+                    }
+
+
                     const deleteForm = document.createElement("div");
                     deleteForm.classList.add("delete-comment-form");
                     deleteForm.innerHTML = `
@@ -322,45 +308,79 @@ document.querySelectorAll(".comment-form").forEach(function (form) {
 });
 
 
-document.querySelectorAll(".edit-comment-btn").forEach(function (button) {
-    button.addEventListener("click", function (event) {
-        event.preventDefault();
-
-        const commentElement = event.target.closest(".comment");
-        const commentContentElement = commentElement.querySelector("p"); // Assuming the comment content is inside a <p> tag
-
-        if (event.target.innerText === "Edit") {
-            // Switch to edit mode
-            event.target.innerText = "Save";
-            const commentText = commentContentElement.innerText;
-            commentContentElement.innerHTML = `<input type="text" class="edit-comment-input" value="${commentText}">`;
-        } else {
-            // Save changes
-            event.target.innerText = "Edit";
-            const newComment = commentElement.querySelector(".edit-comment-input").value;
-            commentContentElement.innerText = newComment;
-
-            const commentId = event.target.getAttribute("data-comment-id");
-
-            $.ajax({
-                type: "POST",
-                url: "/pythonlogin/edit_comment",
-                data: {
-                    comment_id: commentId,
-                    new_comment: newComment
-                },
-                success: function (response) {
-                    console.log(response);
-                    // Handle the response from the server. E.g., show a success message, or handle errors
-                },
-                error: function (xhr, status, error) {
-                    console.error("Error:", error);
-                    alert("An error occurred while editing the comment.");
-                }
-            });
-        }
-    });
+$(document).ready(function () {
+    // Attach delete handler to existing delete buttons
+    $(".delete-comment-btn").click(handleDeleteComment);
 });
+
+// Function to handle deletion of comments
+function handleDeleteComment(event) {
+    event.preventDefault();
+    
+    var commentElement = $(this).closest(".comment");
+    console.log(commentElement)
+    var commentId = commentElement.attr("data-comment-id");
+    console.log(commentId);  // Debug: print the retrieved comment_id to console
+
+    if (confirm("Are you sure you want to delete this comment?")) {
+        $.ajax({
+            type: "POST",
+            url: "/pythonlogin/delete_comment",
+            data: `comment_id=${commentId}`,  // This sends the data as form data
+            success: function (response) {
+                commentElement.remove();
+            },
+            error: function (xhr, status, error) {
+                console.error("Error:", error);
+                alert("An error occurred while deleting the comment.");
+            },
+        });
+    }
+};
+
+document.querySelectorAll(".edit-comment-btn").forEach(function (button) {
+    button.addEventListener("click", handleEditComment);
+});
+
+function handleEditComment(event) {
+    
+    event.preventDefault();
+
+    const commentElement = event.target.closest(".comment");
+    const commentContentElement = commentElement.querySelectorAll("p")[1]; // Assuming the comment content is inside a <p> tag
+
+    if (event.target.innerText === "Edit") {
+        // Switch to edit mode
+        event.target.innerText = "Save";
+        const commentText = commentContentElement.innerText;
+        commentContentElement.innerHTML = `<input type="text" class="edit-comment-input" value="${commentText}">`;
+    } else {
+        // Save changes
+        event.target.innerText = "Edit";
+        const newComment = commentElement.querySelector(".edit-comment-input").value;
+        commentContentElement.innerText = newComment;
+
+        const commentId = event.target.getAttribute("data-comment-id");
+
+        $.ajax({
+            type: "POST",
+            url: "/pythonlogin/edit_comment",
+            data: {
+                comment_id: commentId,
+                new_comment: newComment
+            },
+            success: function (response) {
+                console.log(response);
+                // Handle the response from the server. E.g., show a success message, or handle errors
+            },
+            error: function (xhr, status, error) {
+                console.error("Error:", error);
+                alert("An error occurred while editing the comment.");
+            }
+        });
+    }
+
+}
 </script>
 {% endblock %}
 {% endblock %}

@@ -4,6 +4,7 @@ from pymysql.err import IntegrityError
 import pymysql
 import re
 import os
+import arrow
 import hashlib
 import random
 import uuid
@@ -323,7 +324,7 @@ def brag_board():
     if request.method == "POST":
         # Add new message to database
         title = request.form["title"]
-        date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+        date_now = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
         image = request.files["image"]  # Access the image using request.files
         brag = request.form["brag"]
         user_id = session["user_id"]  # Assuming user ID is stored in session
@@ -351,7 +352,7 @@ def brag_board():
 
         with create_connection() as connection:
             with connection.cursor() as cursor:
-                cursor.execute("INSERT INTO tblboard (title, date, brag, user_id, image) VALUES (%s, %s, %s, %s, %s)", (title, date, brag, user_id, image_filename))
+                cursor.execute("INSERT INTO tblboard (title, date, brag, user_id, image) VALUES (%s, %s, %s, %s, %s)", (title, date_now, brag, user_id, image_filename))
                 connection.commit()
 
         return redirect(url_for('brag_board'))  # Add this line to redirect after POST
@@ -382,6 +383,7 @@ def brag_board():
             for post in posts:
                 cursor.execute("""
                     SELECT
+                        tblcomments.comment_id,
                         tblcomments.comment,
                         tblcomments.comment_date,
                         tblusers.first_name AS user_name,
@@ -414,6 +416,29 @@ def brag_board():
                 likes_dislikes = cursor.fetchone()
                 post["likes"] = likes_dislikes["likes_count"] or 0
                 post["dislikes"] = likes_dislikes["dislikes_count"] or 0
+                date_now = datetime.now()
+                d = str(post['date'])
+                date_in_db = datetime.strptime(d, '%Y-%m-%d %H:%M:%S')
+
+                # Calculate time difference
+                diff = date_now - date_in_db
+
+                # Get difference in minutes
+                diff_minutes = diff.total_seconds() / 60
+                if diff_minutes < 60:
+                    post['date'] = str(int(diff_minutes)) + " minutes ago"
+                elif 60 <= diff_minutes < 60 * 24:
+                    # Change it to hours if difference is 60 minutes or more
+                    diff_hours = diff_minutes / 60
+                    post['date'] = str(int(diff_hours)) + " hours ago"
+                elif 60 * 24 <= diff_minutes < 60 * 24 * 365:
+                    # Change it to days if difference is 24 hours or more
+                    diff_days = diff_minutes / 60 / 24
+                    post['date'] = str(int(diff_days)) + " days ago"
+                else:
+                    # Change it to years if difference is 365 days or more
+                    diff_years = diff_minutes / 60 / 24 / 365
+                    post['date'] = str(int(diff_years)) + " years ago"
 
             # Fetch users
             cursor.execute("SELECT * FROM tblusers")
@@ -486,8 +511,10 @@ def edit_post():
         user_id=session['user_id'],
         role_id=session['role_id'],
         author_id=post['user_id'] if post else None,
-        tblboard=tblboard
+        tblboard=tblboard,
+        data=account 
     )
+
 
 
 @app.route("/pythonlogin/delete_post", methods=['GET', 'POST'])
@@ -624,12 +651,13 @@ def add_comment():
 
     try:
         comment = request.form['comment']
+        comment_id = request.form.get('comment_id')
         comment_date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
         board_id = request.form['board_id']
         user_id = session['user_id']
 
         with connection.cursor() as cursor:
-            cursor.execute("INSERT INTO tblcomments (comment, comment_date, board_id, user_id) VALUES (%s, %s, %s, %s)", (comment, comment_date, board_id, user_id))
+            cursor.execute("INSERT INTO tblcomments (comment, comment_id, comment_date, board_id, user_id) VALUES (%s, %s, %s, %s, %s)", (comment, comment_id, comment_date, board_id, user_id))
             connection.commit()
 
             # Fetch the comment that was just inserted, along with the user's name
@@ -671,7 +699,7 @@ def delete_comment():
     with create_connection() as connection:
         with connection.cursor() as cursor:
             # Fetch the comment to check if it exists and get the associated board_id
-            cursor.execute("SELECT * FROM tblcomments WHERE comment_id = %s", (comment_id,))
+            cursor.execute("SELECT * FROM tblcomments WHERE comment_id = %s", (comment_id))
             comment = cursor.fetchone()
 
             if not comment:
@@ -682,7 +710,7 @@ def delete_comment():
                 return "Unauthorized", 403
 
             # Delete the comment
-            cursor.execute("DELETE FROM tblcomments WHERE comment_id = %s", (comment_id,))
+            cursor.execute("DELETE FROM tblcomments WHERE comment_id = %s", (comment_id))
             connection.commit()
 
     return "Comment successfully deleted"
@@ -691,28 +719,28 @@ def delete_comment():
 @app.route('/pythonlogin/edit_comment', methods=['POST'])
 def edit_comment():
     comment_id = request.form.get('comment_id')
-    comment = request.form.get('new_comment')
+    new_comment = request.form.get('new_comment')  # Changed variable name to new_comment
 
     print(comment_id)
 
-    app.logger.info(f"Received edit_comment request. comment_id: {comment_id}, comment: {comment}")
+    app.logger.info(f"Received edit_comment request. comment_id: {comment_id}, comment: {new_comment}")  # Changed variable name to new_comment
 
-    if not comment_id or not comment:
+    if not comment_id or not new_comment:  # Changed variable name to new_comment
         app.logger.error("Invalid input: comment_id or comment is missing")
         return "Invalid input", 400
 
     with create_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM tblcomments WHERE comment_id = %s", (comment_id,))
-            comment = cursor.fetchone()
+            cursor.execute("SELECT * FROM tblcomments WHERE comment_id = %s", (comment_id))
+            existing_comment = cursor.fetchone()  # Changed variable name to existing_comment
 
-            if not comment:
+            if not existing_comment:  # Changed variable name to existing_comment
                 return "Comment not found", 404
 
-            if session['user_id'] != comment['user_id']:
+            if session['user_id'] != existing_comment['user_id']:  # Changed variable name to existing_comment
                 return "Unauthorized", 403
 
-            cursor.execute("UPDATE tblcomments SET comment = %s WHERE comment_id = %s", (comment, comment_id))
+            cursor.execute("UPDATE tblcomments SET comment = %s WHERE comment_id = %s", (new_comment, comment_id))  # Changed variable name to new_comment
             connection.commit()
 
     return "Comment successfully updated"
