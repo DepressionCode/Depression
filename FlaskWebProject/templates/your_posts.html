@@ -1,12 +1,12 @@
 ﻿{% extends 'layout.html' %}
 
-{% block title %}Profile{% endblock %}
+{% block title %}Your Posts{% endblock %}
 
 {% block content %}
 
 <div class="container">
-    <h1>Brag Board</h1>
-    <form method="POST" action="{{ url_for('brag_board') }}" enctype="multipart/form-data">
+    <h1>Your Posts</h1>
+    <form method="POST" action="{{ url_for('your_posts') }}" enctype="multipart/form-data">
         <input type="hidden" name="board_id" value="{{tblboard['board_id']}}">
         <label for="title">
             Title Of Post:
@@ -40,24 +40,32 @@
             <div class="col-4">
                 <div class="row">
                     <div class="col-12">
-                        {% if data["avatar"] == "" %}
+                        {% if post["user_avatar"] == "" %}
                         <img class="pfp" src="{{ url_for('default_image') }}" alt="Default Image">
                         {% else %}
-                        <img class="pfp" src="/static/Images/{{data["avatar"]}}" />
+                        <img class="pfp" src="/static/Images/{{post["user_avatar"]}}" />
                         {% endif %}
                         <table>
                             <tr>
                                 <td>Username:</td>
-                                <td>{{ data['first_name'] }}</td>
+                                <td>{{ post['user_name'] }}</td>
                             </tr>
+                            {% if post['date'] %}
                             <tr>
                                 <td>Time Posted:</td>
                                 <td>{{ post['date'] }}</td>
                             </tr>
-                        </table>
+                            {% endif %}
+                            {% if post['date_edited'] %}
+                            <tr>
+                                <td>Time Edit:</td>
+                                <td>{{ post['date_edited'] }}</td>
+                            </tr>
+                            {% endif %}
+                        </table>                        
                     </div>
                 </div>
-            </div>
+            </div>   
             <div class="col-8">
                 <div class="row">
                     <h4>{{post['title']}}</h4>
@@ -111,7 +119,13 @@
                             {% endif %}
 
                             <!-- Only show the delete button if the user is the author or an admin -->
-                            <button class="delete-post" id="delete_button-{{post['board_id']}}" data-board-id="{{post['board_id']}}" onclick="if (confirm('Are you SURE you wish to delete this post?')) history.back();">Delete Post</button>
+                            <form class="delete-post" action="{{ url_for('delete_post', board_id=post['board_id']) }}" method="POST">
+                                <input type="hidden" name="page" value="posts"/>
+                                <button class="delete-post" id="delete_button-{{post['board_id']}}" data-board-id="{{post['board_id']}}" 
+                                    onclick="event.preventDefault(); if (confirm('Are you SURE you wish to delete this post?')) this.closest('form').submit();">Delete Post
+                                </button>
+                            </form>
+
                         </div>
                     {% endif %}
 
@@ -125,7 +139,16 @@
                     <div id="comments-{{ post['board_id'] }}" class="comments">
                         {% for comment in post['comments'] %}
                             <div class="comment" data-comment-id="{{ comment['comment_id'] }}">
-                                <p><strong>{{ comment['user_name'] }}</strong> <em>{{ comment['comment_date'] }}</em></p>
+                                <p><strong>{{ comment['user_name'] }}</strong> 
+                                    <em> 
+                                        Posted {{ comment['comment_date'] }}{% if comment['comment_date_edited'] %},{% endif %}
+                                    </em>
+                                    {% if comment['comment_date_edited'] %}
+                                    <em> 
+                                        Edited {{ comment['comment_date_edited'] }}
+                                    </em>
+                                    {% endif %}
+                                </p>
                                 <p>{{ comment['comment'] }}</p>
                                 {% if session["user_id"] == comment['user_id'] %}
                                     <div class="edit-delete-comment">
@@ -142,6 +165,12 @@
                                         </form>
                                     </div>
                                 {% endif %}
+                                <div class="col-12">
+                                    <button class="comment_like-btn" data-comment-id="{{comment['comment_id']}}">Like</button>
+                                    <span id="comment_likes-{{ comment['comment_id'] }}">Likes: {{ comment['comment_likes_count'] or 0 }}</span>
+                                    <button class="comment_dislike-btn" data-comment-id="{{comment['comment_id']}}">Dislike</button>
+                                    <span id="comment_dislikes-{{ comment['comment_id'] }}">Dislikes: {{ comment['comment_dislikes_count'] or 0 }}</span>                                 
+                                </div>
                             </div>
                         {% endfor %}
                     </div>                                                                                                                   
@@ -205,6 +234,7 @@ document.querySelectorAll(".edit-form").forEach(function (form) {
     });
 });
 
+
 document.querySelectorAll(".like-btn, .dislike-btn").forEach(function (button) {
     button.addEventListener("click", function (event) {
         event.preventDefault();
@@ -226,6 +256,51 @@ document.querySelectorAll(".like-btn, .dislike-btn").forEach(function (button) {
         });
     });
 });
+
+
+document.querySelectorAll(".comment_like-btn, .comment_dislike-btn").forEach(function (button) {
+    button.addEventListener("click", function handleLikeDislike(event) {
+        event.preventDefault();
+
+        var comment_id = this.getAttribute("data-comment-id");
+        var comment_like = this.classList.contains("comment_like-btn");
+
+        console.log("i am being pressed");
+
+        $.ajax({
+            type: "GET",
+            url: "/pythonlogin/like_comment",
+            data: { comment_id: comment_id, comment_like: comment_like },
+            success: function (response) {
+                $("#comment_likes-" + comment_id).text("Likes: " + response.comment_likes);
+                $("#comment_dislikes-" + comment_id).text("Dislikes: " + response.comment_dislikes);
+            },
+            error: function (error) {
+                console.log(error);
+            },
+        });
+    });
+});
+
+function handleLikeDislike(){
+    var comment_id = this.getAttribute("data-comment-id");
+    var comment_like = this.classList.contains("comment_like-btn");
+
+    console.log("i am being pressed");
+
+    $.ajax({
+        type: "GET",
+        url: "/pythonlogin/like_comment",
+        data: { comment_id: comment_id, comment_like: comment_like },
+        success: function (response) {
+            $("#comment_likes-" + comment_id).text("Likes: " + response.comment_likes);
+            $("#comment_dislikes-" + comment_id).text("Dislikes: " + response.comment_dislikes);
+        },
+        error: function (error) {
+            console.log(error);
+        },
+    });
+}
 
 
 document.querySelectorAll(".comment-form").forEach(function (form) {
@@ -252,7 +327,7 @@ document.querySelectorAll(".comment-form").forEach(function (form) {
                 const newComment = document.createElement("div");
                 newComment.classList.add("comment");
                 newComment.innerHTML = `
-                    <p><strong>${data.user_name}</strong> <em>${data.comment_date}</em></p>
+                    <p><strong>${data.user_name}</strong> <em> Posted ${data.comment_date}</em></p>
                     <p>${data.comment}</p>
                 `;
 
@@ -299,6 +374,21 @@ document.querySelectorAll(".comment-form").forEach(function (form) {
                         deleteButton.addEventListener("click", handleDeleteComment);
                     }
                 }
+
+                // Add the like and dislike buttons to the new comment
+                const likeDislikeContainer = document.createElement("div");
+                likeDislikeContainer.classList.add("like-dislike-container");
+                likeDislikeContainer.innerHTML = `
+                    <button class="comment_like-btn" data-comment-id="${data.comment_id}">Like</button>
+                    <span id="comment_likes-${data.comment_id}">Likes: 0</span>
+                    <button class="comment_dislike-btn" data-comment-id="${data.comment_id}">Dislike</button>
+                    <span id="comment_dislikes-${data.comment_id}">Dislikes: 0</span>
+                `;
+                newComment.appendChild(likeDislikeContainer);
+
+                // Attach the click event to the newly added like and dislike buttons
+                likeDislikeContainer.querySelector(".comment_like-btn").addEventListener("click", handleLikeDislike);
+                likeDislikeContainer.querySelector(".comment_dislike-btn").addEventListener("click", handleLikeDislike);
             },
             error: function (error) {
                 console.error("Error:", error);
@@ -352,26 +442,33 @@ function handleEditComment(event) {
     if (event.target.innerText === "Edit") {
         // Switch to edit mode
         event.target.innerText = "Save";
-        const commentText = commentContentElement.innerText;
+        var commentText = commentContentElement.innerText;
         commentContentElement.innerHTML = `<input type="text" class="edit-comment-input" value="${commentText}">`;
     } else {
         // Save changes
         event.target.innerText = "Edit";
-        const newComment = commentElement.querySelector(".edit-comment-input").value;
+        var newComment = commentElement.querySelector(".edit-comment-input").value;
         commentContentElement.innerText = newComment;
 
-        const commentId = event.target.getAttribute("data-comment-id");
+        var commentId = commentElement.getAttribute("data-comment-id");
+        console.log(commentId)
+
+        var formData = new FormData();
+        formData.append('comment_id', commentId);
+        formData.append('new_comment', newComment);
 
         $.ajax({
             type: "POST",
             url: "/pythonlogin/edit_comment",
-            data: {
-                comment_id: commentId,
-                new_comment: newComment
-            },
+            data: formData,
+            contentType: false,
+            processData: false,
             success: function (response) {
                 console.log(response);
-                // Handle the response from the server. E.g., show a success message, or handle errors
+                // Get the date paragraph and update it
+                const dateParagraph = commentElement.querySelectorAll("p")[0];
+                dateParagraph.innerHTML = `<strong>${response.user_id}</strong> 
+                    <em> Posted ${response.comment_date}, Edited ${response.comment_date_edited}</em>`;
             },
             error: function (xhr, status, error) {
                 console.error("Error:", error);
@@ -379,7 +476,6 @@ function handleEditComment(event) {
             }
         });
     }
-
 }
 </script>
 {% endblock %}

@@ -4,7 +4,6 @@ from pymysql.err import IntegrityError
 import pymysql
 import re
 import os
-import arrow
 import hashlib
 import random
 import uuid
@@ -59,8 +58,8 @@ def login():
                 session['role_id'] = account['role_id']
                 session['email'] = account['email']
                 session['first_name'] = account['first_name']
-                # Redirect to home page
-                return redirect(url_for('home'))
+                # Redirect to your_feed page
+                return redirect(url_for('your_feed'))
             else:
                 # Account doesnt exist or username/password incorrect
                 msg = 'Incorrect email/password!'
@@ -117,25 +116,15 @@ def register():
             # Form is empty... (no POST data)
             msg = 'Please fill out the form!'
         return render_template('register.html', msg=msg)
-
-
-# http://localhost:5000/pythinlogin/home - this will be the home page, only accessible for loggedin users
-@app.route('/pythonlogin/home')
-def home():
-    # Check if user is loggedin
-    if 'loggedin' in session:
-        # User is loggedin show them the home page
-        return render_template('home.html', username=session['first_name'])
-    # User is not loggedin redirect to login page
-    return redirect(url_for('login'))
+    
 
 # http://localhost:5000/pythinlogin/profile - this will be the profile page, only accessible for loggedin users
 @app.route('/pythonlogin/profile')
 def profile():
-    # Connect to the database
-    with create_connection() as connection:
-        # Check if user is loggedin
-        if 'loggedin' in session:
+    # Check if user is loggedin
+    if 'loggedin' in session:
+        # Connect to the database
+        with create_connection() as connection:
             # We need all the account info for the user so we can display it on the profile page
             with connection.cursor() as cursor:
                 cursor.execute('SELECT * FROM tblusers WHERE user_id = %s', (session['user_id'],))
@@ -148,8 +137,8 @@ def profile():
                     cursor.execute('SELECT * FROM tblusers')
                     accounts = cursor.fetchall()
                     return render_template('admin.html', account=account, accounts=accounts)
-        # User is not loggedin redirect to login page
-        return redirect(url_for('login'))
+    # User is not loggedin redirect to login page
+    return redirect(url_for('login'))
 
 
 @app.route('/pythonlogin/delete_users', methods=['GET', 'POST'])
@@ -319,143 +308,345 @@ def make_user():
                     return redirect('/pythonlogin/profile')
 
 
-@app.route("/pythonlogin/brag_board", methods=["GET", "POST"])
-def brag_board():
-    if request.method == "POST":
-        # Add new message to database
-        title = request.form["title"]
-        date_now = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
-        image = request.files["image"]  # Access the image using request.files
-        brag = request.form["brag"]
-        user_id = session["user_id"]  # Assuming user ID is stored in session
+def format_date(date):
+    if date is None:
+        return None
 
-        # Managing image posting upload
-        image_filename = ""
-        if 'image' in request.files.keys():
-            image = request.files['image']
-            if image:
-                if str(image.filename.split('.')[-1]) in ALLOWED_EXTENSIONS:
-                    # Generate a unique filename for the post image
-                    unique_filename = str(uuid.uuid4()) + "." + image.filename.split('.')[-1]
-                    # Save the image to the post_images folder
-                    image.save(os.path.join(UPLOAD_FOLDER2, unique_filename))
+    date_now = datetime.now()
+    d = str(date)
+    date_in_db = datetime.strptime(d, '%Y-%m-%d %H:%M:%S')
 
-                    # Set the image filename for the post
-                    image_filename = unique_filename
-                else:
-                    msg4 = 'File extension is not valid! It should be in the format of .png, .jpg, .jpeg, jfif, or .gif.'
-                    flash(msg4)
-                    return redirect(url_for('brag_board'))
-        else:
-            # Set the image filename to an empty string if there's no image
+    # Calculate time difference
+    diff = date_now - date_in_db
+
+    # Get difference in minutes
+    diff_minutes = diff.total_seconds() / 60
+    if diff_minutes < 60:
+        date = str(int(diff_minutes)) + " minutes ago"
+    elif 60 <= diff_minutes < 60 * 24:
+        # Change it to hours if difference is 60 minutes or more
+        diff_hours = diff_minutes / 60
+        date = str(int(diff_hours)) + " hours ago"
+    elif 60 * 24 <= diff_minutes < 60 * 24 * 365:
+        # Change it to days if difference is 24 hours or more
+        diff_days = diff_minutes / 60 / 24
+        date = str(int(diff_days)) + " days ago"
+    else:
+        # Change it to years if difference is 365 days or more
+        diff_years = diff_minutes / 60 / 24 / 365
+        date = str(int(diff_years)) + " years ago"
+    return date
+
+
+# http://localhost:5000/pythinlogin/your_feed - this will be the your_feed page, only accessible for loggedin users
+@app.route('/pythonlogin/your_feed')
+def your_feed():
+    # Check if user is loggedin
+    if 'loggedin' in session:
+        if request.method == "POST":
+            # Add new message to database
+            title = request.form["title"]
+            date_now = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+            image = request.files["image"]  # Access the image using request.files
+            brag = request.form["brag"]
+            user_id = session["user_id"]  # Assuming user ID is stored in session
+
+            # Managing image posting upload
             image_filename = ""
+            if 'image' in request.files.keys():
+                image = request.files['image']
+                if image:
+                    if str(image.filename.split('.')[-1]) in ALLOWED_EXTENSIONS:
+                        # Generate a unique filename for the post image
+                        unique_filename = str(uuid.uuid4()) + "." + image.filename.split('.')[-1]
+                        # Save the image to the post_images folder
+                        image.save(os.path.join(UPLOAD_FOLDER2, unique_filename))
 
+                        # Set the image filename for the post
+                        image_filename = unique_filename
+                    else:
+                        msg4 = 'File extension is not valid! It should be in the format of .png, .jpg, .jpeg, jfif, or .gif.'
+                        flash(msg4)
+                        return redirect(url_for('your_feed'))
+            else:
+                # Set the image filename to an empty string if there's no image
+                image_filename = ""
+
+            with create_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("INSERT INTO tblboard (title, date, brag, user_id, image) VALUES (%s, %s, %s, %s, %s)", (title, date_now, brag, user_id, image_filename))
+                    connection.commit()
+
+            return redirect(url_for('your_feed'))  # Add this line to redirect after POST
+
+        # Get all messages and accounts from database
         with create_connection() as connection:
             with connection.cursor() as cursor:
-                cursor.execute("INSERT INTO tblboard (title, date, brag, user_id, image) VALUES (%s, %s, %s, %s, %s)", (title, date_now, brag, user_id, image_filename))
-                connection.commit()
-
-        return redirect(url_for('brag_board'))  # Add this line to redirect after POST
-
-    # Get all messages and accounts from database
-    with create_connection() as connection:
-        with connection.cursor() as cursor:
-            # Fetch posts with likes and dislikes count
-            cursor.execute("""
-                SELECT
-                    tblboard.*,
-                    tblusers.first_name AS user_name,
-                    COALESCE(SUM(tblpostlikes.likes), 0) as likes_count,
-                    COALESCE(SUM(tblpostlikes.dislikes), 0) as dislikes_count
-                FROM
-                    tblboard
-                LEFT JOIN tblusers
-                    ON tblboard.user_id = tblusers.user_id
-                LEFT JOIN tblpostlikes
-                    ON tblboard.board_id = tblpostlikes.board_id
-                GROUP BY
-                    tblboard.board_id,
-                    tblusers.user_id
-                ORDER BY tblboard.date DESC
-            """)
-            posts = cursor.fetchall()
-
-            for post in posts:
+                # Fetch posts with likes and dislikes count
                 cursor.execute("""
                     SELECT
-                        tblcomments.comment_id,
-                        tblcomments.comment,
-                        tblcomments.comment_date,
+                        tblboard.*,
                         tblusers.first_name AS user_name,
-                        tblcomments.user_id AS user_id
+                        tblusers.avatar AS user_avatar,  -- Fetching the avatar
+                        COALESCE(SUM(tblpostlikes.likes), 0) as likes_count,
+                        COALESCE(SUM(tblpostlikes.dislikes), 0) as dislikes_count
                     FROM
-                        tblcomments
+                        tblboard
                     LEFT JOIN tblusers
-                        ON tblcomments.user_id = tblusers.user_id
-                    WHERE
-                        tblcomments.board_id = %s
-                """, (post["board_id"],))
-                comments = cursor.fetchall()
-                
-                for comment in comments:
-                    # Set the can_delete flag for each comment
-                    comment['can_delete'] = comment['user_id'] == session["user_id"]
+                        ON tblboard.user_id = tblusers.user_id
+                    LEFT JOIN tblpostlikes
+                        ON tblboard.board_id = tblpostlikes.board_id
+                    GROUP BY
+                        tblboard.board_id,
+                        tblusers.user_id
+                    ORDER BY tblboard.date DESC
+                """)
+                posts = cursor.fetchall()
 
-                post["comments"] = comments
+                for post in posts:
+                    cursor.execute("""
+                        SELECT
+                            tblcomments.comment_id,
+                            tblcomments.comment,
+                            tblcomments.comment_date,
+                            tblcomments.comment_date_edited,
+                            tblusers.first_name AS user_name,
+                            tblcomments.user_id AS user_id,
+                            COALESCE(SUM(tblcommentpostlikes.comment_likes), 0) as comment_likes_count,
+                            COALESCE(SUM(tblcommentpostlikes.comment_dislikes), 0) as comment_dislikes_count
+                        FROM
+                            tblcomments
+                        LEFT JOIN tblusers
+                            ON tblcomments.user_id = tblusers.user_id
+                        LEFT JOIN tblcommentpostlikes
+                            ON tblcomments.comment_id = tblcommentpostlikes.comment_id
+                        WHERE
+                            tblcomments.board_id = %s
+                        GROUP BY
+                            tblcomments.comment_id,
+                            tblusers.user_id
+                    """, (post["board_id"],))
+                    comments = cursor.fetchall()
 
-                # Fetch likes and dislikes
+                    for comment in comments:
+                        # Set the can_delete flag for each comment
+                        comment['can_delete'] = comment['user_id'] == session["user_id"]
+
+                        # Format the comment's date
+                        p = format_date(comment['comment_date'])
+                        comment['comment_date'] = p
+
+                        p = format_date(comment['comment_date_edited'])
+                        comment['comment_date_edited'] = p
+
+                        # Fetch likes and dislikes for comments
+                        cursor.execute("""
+                            SELECT
+                                SUM(comment_likes) AS comment_likes_count,
+                                SUM(comment_dislikes) AS comment_dislikes_count
+                            FROM
+                                tblcommentpostlikes
+                            WHERE
+                                tblcommentpostlikes.comment_id = %s
+                        """, (comment["comment_id"],))
+                        comment_likes_dislikes = cursor.fetchone()
+                        comment["comment_likes"] = comment_likes_dislikes["comment_likes_count"] or 0
+                        comment["comment_dislikes"] = comment_likes_dislikes["comment_dislikes_count"] or 0
+
+                    post["comments"] = comments
+
+                    # Fetch likes and dislikes for posts
+                    cursor.execute("""
+                        SELECT
+                            SUM(likes) AS likes_count,
+                            SUM(dislikes) AS dislikes_count
+                        FROM
+                            tblpostlikes
+                        WHERE
+                            tblpostlikes.board_id = %s
+                    """, (post["board_id"],))
+                    likes_dislikes = cursor.fetchone()
+                    post["likes"] = likes_dislikes["likes_count"] or 0
+                    post["dislikes"] = likes_dislikes["dislikes_count"] or 0
+
+                    p = format_date(post['date'])
+                    post['date'] = p
+                    p = format_date(post['date_edited'])
+                    post['date_edited'] = p
+
+                # Fetch users
+                cursor.execute("SELECT * FROM tblusers")
+                accounts = cursor.fetchall()
+
+                # Fetch the current user's data
+                cursor.execute("SELECT * FROM tblusers WHERE user_id = %s", (session["user_id"],))
+                user = cursor.fetchone()
+
+        post = {}  # Initialize post as an empty dictionary
+
+        # User is loggedin show them the your_feed page
+        return render_template("your_feed.html", tblboard=posts, accounts=accounts, data=user, post=post, username=session['first_name'])
+    # User is not loggedin redirect to login page
+    return redirect(url_for('login'))
+
+
+@app.route("/pythonlogin/your_posts", methods=["GET", "POST"])
+def your_posts():
+    # Check if user is loggedin
+    if 'loggedin' in session:
+        if request.method == "POST":
+            # Add new message to database
+            title = request.form["title"]
+            date_now = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+            image = request.files["image"]  # Access the image using request.files
+            brag = request.form["brag"]
+            user_id = session["user_id"]  # Assuming user ID is stored in session
+
+            # Managing image posting upload
+            image_filename = ""
+            if 'image' in request.files.keys():
+                image = request.files['image']
+                if image:
+                    if str(image.filename.split('.')[-1]) in ALLOWED_EXTENSIONS:
+                        # Generate a unique filename for the post image
+                        unique_filename = str(uuid.uuid4()) + "." + image.filename.split('.')[-1]
+                        # Save the image to the post_images folder
+                        image.save(os.path.join(UPLOAD_FOLDER2, unique_filename))
+
+                        # Set the image filename for the post
+                        image_filename = unique_filename
+                    else:
+                        msg4 = 'File extension is not valid! It should be in the format of .png, .jpg, .jpeg, jfif, or .gif.'
+                        flash(msg4)
+                        return redirect(url_for('your_feed'))
+            else:
+                # Set the image filename to an empty string if there's no image
+                image_filename = ""
+
+            with create_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("INSERT INTO tblboard (title, date, brag, user_id, image) VALUES (%s, %s, %s, %s, %s)", (title, date_now, brag, user_id, image_filename))
+                    connection.commit()
+
+            return redirect(url_for('your_posts'))  # Add this line to redirect after POST
+
+        # Get all messages and accounts from database
+        with create_connection() as connection:
+            with connection.cursor() as cursor:
+                # Fetch ONLY the logged-in user's posts with likes and dislikes count
                 cursor.execute("""
                     SELECT
-                        SUM(likes) AS likes_count,
-                        SUM(dislikes) AS dislikes_count
+                        tblboard.*,
+                        tblusers.first_name AS user_name,
+                        tblusers.avatar AS user_avatar,  -- Fetching the avatar
+                        COALESCE(SUM(tblpostlikes.likes), 0) as likes_count,
+                        COALESCE(SUM(tblpostlikes.dislikes), 0) as dislikes_count
                     FROM
-                        tblpostlikes
+                        tblboard
+                    LEFT JOIN tblusers
+                        ON tblboard.user_id = tblusers.user_id
+                    LEFT JOIN tblpostlikes
+                        ON tblboard.board_id = tblpostlikes.board_id
                     WHERE
-                        tblpostlikes.board_id = %s
-                """, (post["board_id"],))
-                likes_dislikes = cursor.fetchone()
-                post["likes"] = likes_dislikes["likes_count"] or 0
-                post["dislikes"] = likes_dislikes["dislikes_count"] or 0
-                date_now = datetime.now()
-                d = str(post['date'])
-                date_in_db = datetime.strptime(d, '%Y-%m-%d %H:%M:%S')
+                        tblboard.user_id = %s  -- Filter by logged-in user's ID
+                    GROUP BY
+                        tblboard.board_id,
+                        tblusers.user_id
+                    ORDER BY tblboard.date DESC
+                """, (session["user_id"],))  # Pass in the logged-in user's ID
+                posts = cursor.fetchall()
 
-                # Calculate time difference
-                diff = date_now - date_in_db
+                for post in posts:
+                    cursor.execute("""
+                        SELECT
+                            tblcomments.comment_id,
+                            tblcomments.comment,
+                            tblcomments.comment_date,
+                            tblcomments.comment_date_edited,
+                            tblusers.first_name AS user_name,
+                            tblcomments.user_id AS user_id,
+                            COALESCE(SUM(tblcommentpostlikes.comment_likes), 0) as comment_likes_count,
+                            COALESCE(SUM(tblcommentpostlikes.comment_dislikes), 0) as comment_dislikes_count
+                        FROM
+                            tblcomments
+                        LEFT JOIN tblusers
+                            ON tblcomments.user_id = tblusers.user_id
+                        LEFT JOIN tblcommentpostlikes
+                            ON tblcomments.comment_id = tblcommentpostlikes.comment_id
+                        WHERE
+                            tblcomments.board_id = %s
+                        GROUP BY
+                            tblcomments.comment_id,
+                            tblusers.user_id
+                    """, (post["board_id"],))
+                    comments = cursor.fetchall()
 
-                # Get difference in minutes
-                diff_minutes = diff.total_seconds() / 60
-                if diff_minutes < 60:
-                    post['date'] = str(int(diff_minutes)) + " minutes ago"
-                elif 60 <= diff_minutes < 60 * 24:
-                    # Change it to hours if difference is 60 minutes or more
-                    diff_hours = diff_minutes / 60
-                    post['date'] = str(int(diff_hours)) + " hours ago"
-                elif 60 * 24 <= diff_minutes < 60 * 24 * 365:
-                    # Change it to days if difference is 24 hours or more
-                    diff_days = diff_minutes / 60 / 24
-                    post['date'] = str(int(diff_days)) + " days ago"
-                else:
-                    # Change it to years if difference is 365 days or more
-                    diff_years = diff_minutes / 60 / 24 / 365
-                    post['date'] = str(int(diff_years)) + " years ago"
+                    for comment in comments:
+                        # Set the can_delete flag for each comment
+                        comment['can_delete'] = comment['user_id'] == session["user_id"]
 
-            # Fetch users
-            cursor.execute("SELECT * FROM tblusers")
-            accounts = cursor.fetchall()
+                        # Format the comment's date
+                        p = format_date(comment['comment_date'])
+                        comment['comment_date'] = p
 
-            # Fetch the current user's data
-            cursor.execute("SELECT * FROM tblusers WHERE user_id = %s", (session["user_id"],))
-            user = cursor.fetchone()
+                        p = format_date(comment['comment_date_edited'])
+                        comment['comment_date_edited'] = p
 
-    post = {}  # Initialize post as an empty dictionary
+                        # Fetch likes and dislikes for comments
+                        cursor.execute("""
+                            SELECT
+                                SUM(comment_likes) AS comment_likes_count,
+                                SUM(comment_dislikes) AS comment_dislikes_count
+                            FROM
+                                tblcommentpostlikes
+                            WHERE
+                                tblcommentpostlikes.comment_id = %s
+                        """, (comment["comment_id"],))
+                        comment_likes_dislikes = cursor.fetchone()
+                        comment["comment_likes"] = comment_likes_dislikes["comment_likes_count"] or 0
+                        comment["comment_dislikes"] = comment_likes_dislikes["comment_dislikes_count"] or 0
 
-    return render_template("brag_board.html", tblboard=posts, accounts=accounts, data=user, post=post)
+                    post["comments"] = comments
+
+                    # Fetch likes and dislikes for posts
+                    cursor.execute("""
+                        SELECT
+                            SUM(likes) AS likes_count,
+                            SUM(dislikes) AS dislikes_count
+                        FROM
+                            tblpostlikes
+                        WHERE
+                            tblpostlikes.board_id = %s
+                    """, (post["board_id"],))
+                    likes_dislikes = cursor.fetchone()
+                    post["likes"] = likes_dislikes["likes_count"] or 0
+                    post["dislikes"] = likes_dislikes["dislikes_count"] or 0
+
+                    p = format_date(post['date'])
+                    post['date'] = p
+                    p = format_date(post['date_edited'])
+                    post['date_edited'] = p
+
+                # Fetch users
+                cursor.execute("SELECT * FROM tblusers")
+                accounts = cursor.fetchall()
+
+                # Fetch the current user's data
+                cursor.execute("SELECT * FROM tblusers WHERE user_id = %s", (session["user_id"],))
+                user = cursor.fetchone()
+
+        post = {}  # Initialize post as an empty dictionary
+
+        # User is loggedin show them the your_feed page
+        return render_template("your_posts.html", tblboard=posts, accounts=accounts, data=user, post=post, username=session['first_name'])
+    # User is not loggedin redirect to login page
+    return redirect(url_for('login'))
 
 
 @app.route('/pythonlogin/edit_post', methods=['POST'])
 def edit_post():
     board_id = request.form['board_id']
+    date_edited = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
     title = request.form['title']
     brag = request.form['brag']
     image = request.files.get('image')
@@ -485,15 +676,19 @@ def edit_post():
                     return "Invalid image format", 400
 
             if image_filename:
-                cursor.execute("UPDATE tblboard SET title=%s, brag=%s, image=%s WHERE board_id=%s", (title, brag, image_filename, board_id))
+                cursor.execute("UPDATE tblboard SET title=%s, date_edited=%s, brag=%s, image=%s WHERE board_id=%s", (title, date_edited, brag, image_filename, board_id))
             else:
-                cursor.execute("UPDATE tblboard SET title=%s, brag=%s WHERE board_id=%s", (title, brag, board_id))
+                cursor.execute("UPDATE tblboard SET title=%s, date_edited=%s, brag=%s WHERE board_id=%s", (title, date_edited, brag, board_id))
 
             connection.commit()
 
             # fetch the updated post
             cursor.execute("SELECT * FROM tblboard WHERE board_id = %s", (board_id,))
             post = cursor.fetchone()
+            p = format_date(post['date'])
+            post['date'] = p
+            p = format_date(post['date_edited'])
+            post['date_edited'] = p
 
             # fetch the current user's account information
             cursor.execute("SELECT * FROM tblusers WHERE user_id = %s", (session['user_id'],))
@@ -506,7 +701,7 @@ def edit_post():
             tblboard = cursor.fetchall()
 
     return render_template(
-        'brag_board.html',
+        'your_posts.html',
         post=post,
         user_id=session['user_id'],
         role_id=session['role_id'],
@@ -514,7 +709,6 @@ def edit_post():
         tblboard=tblboard,
         data=account 
     )
-
 
 
 @app.route("/pythonlogin/delete_post", methods=['GET', 'POST'])
@@ -533,15 +727,17 @@ def delete_post():
             cursor.execute(board_sql, (board_id,))
             post = cursor.fetchone()
 
+            page = request.form['page']
+
             # check if the post exists
             if post is None:
                 flash("Post not found.")
-                return redirect('/pythonlogin/brag_board')
+                return redirect(f'/pythonlogin/your_{page}')
 
             # check if the user is allowed to delete the post
             if session['user_id'] != post['user_id'] and session['role_id'] != 1:
                 flash("You are not authorized to delete this post.")
-                return redirect('/pythonlogin/brag_board')
+                return redirect(f'/pythonlogin/your_{page}')
 
             if request.method == "POST":
                 # Fetch the filename of the image associated with the post
@@ -568,7 +764,7 @@ def delete_post():
                 connection.commit()
 
                 flash("Post successfully deleted.")
-                return redirect('/pythonlogin/brag_board')
+                return redirect(f'/pythonlogin/your_{page}')
 
             # fetch the current user's account information
             cursor.execute("SELECT * FROM tblusers WHERE user_id = %s", (session['user_id'],))
@@ -579,7 +775,7 @@ def delete_post():
             tblboard = cursor.fetchall()
 
     return render_template(
-        'brag_board.html',
+        f'your_{page}.html',
         post=post,
         user_id=session['user_id'],
         role_id=session['role_id'],
@@ -675,6 +871,10 @@ def add_comment():
             """, (cursor.lastrowid,))
             new_comment = cursor.fetchone()
 
+            # Format the new comment's date
+            p = format_date(new_comment['comment_date'])
+            new_comment['comment_date'] = p
+
         # Return the new comment as JSON
         return jsonify(new_comment)
 
@@ -719,7 +919,9 @@ def delete_comment():
 @app.route('/pythonlogin/edit_comment', methods=['POST'])
 def edit_comment():
     comment_id = request.form.get('comment_id')
+    comment_date_edited = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
     new_comment = request.form.get('new_comment')  # Changed variable name to new_comment
+    print(new_comment)
 
     print(comment_id)
 
@@ -731,19 +933,85 @@ def edit_comment():
 
     with create_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM tblcomments WHERE comment_id = %s", (comment_id))
-            existing_comment = cursor.fetchone()  # Changed variable name to existing_comment
-
-            if not existing_comment:  # Changed variable name to existing_comment
-                return "Comment not found", 404
-
-            if session['user_id'] != existing_comment['user_id']:  # Changed variable name to existing_comment
-                return "Unauthorized", 403
-
-            cursor.execute("UPDATE tblcomments SET comment = %s WHERE comment_id = %s", (new_comment, comment_id))  # Changed variable name to new_comment
+            cursor.execute("UPDATE tblcomments SET comment = %s, comment_date_edited = %s WHERE comment_id = %s", (new_comment, comment_date_edited, comment_id))
             connection.commit()
 
-    return "Comment successfully updated"
+            # Fetch the updated comment
+            cursor.execute("SELECT * FROM tblcomments WHERE comment_id = %s", comment_id)
+            updated_comment = cursor.fetchone()
+
+            # Format the updated comment's date
+            p = format_date(updated_comment['comment_date'])
+            updated_comment['comment_date'] = p
+
+            # Format the updated comment's date
+            p = format_date(updated_comment['comment_date_edited'])
+            updated_comment['comment_date_edited'] = p
+
+            cursor.execute('SELECT * FROM tblusers WHERE user_id = %s', updated_comment['user_id'])
+            user = cursor.fetchone()
+            updated_comment['user_id'] = user['first_name']
+
+    return jsonify(updated_comment)
+
+
+@app.route("/pythonlogin/like_comment", methods=["GET"])
+def like_comment():
+    comment_id = request.args.get("comment_id")
+    comment_like = request.args.get("comment_like", "false")  # default to "false" if "like" argument is not provided
+    comment_like = True if comment_like.lower() == 'true' else False
+    user_id = session["user_id"]
+
+    print(f"comment_id: '{comment_id}'")
+
+    if comment_id is None:
+        return "Invalid request: comment_id is required", 400
+
+    with create_connection() as connection:
+        with connection.cursor() as cursor:
+            # Check if a like or dislike already exists from this user
+            cursor.execute(
+                "SELECT * FROM tblcommentpostlikes WHERE user_id = %s AND comment_id = %s",
+                (user_id, comment_id)
+            )
+            comment_existing_like = cursor.fetchone()
+
+            if comment_existing_like:
+                if (comment_existing_like["comment_likes"] == 1 and comment_like) or (comment_existing_like["comment_dislikes"] == 1 and not comment_like):
+                    # Remove like/dislike if the same button is clicked again
+                    cursor.execute(
+                        "DELETE FROM tblcommentpostlikes WHERE user_id = %s AND comment_id = %s",
+                        (user_id, comment_id)
+                    )
+                else:
+                    # Update like to dislike or vice versa
+                    cursor.execute(
+                        "UPDATE tblcommentpostlikes SET comment_likes = %s, comment_dislikes = %s WHERE user_id = %s AND comment_id = %s",
+                        (1 if comment_like else 0, 0 if comment_like else 1, user_id, comment_id)
+                    )
+            else:
+                print('interesting')
+                try:
+                    cursor.execute(
+                        "INSERT INTO tblcommentpostlikes (comment_id, user_id, comment_likes, comment_dislikes) VALUES (%s, %s, %s, %s)",
+                        (comment_id, user_id, 1 if comment_like else 0, 0 if comment_like else 1)
+                    )
+                    print("INSERT INTO tblcommentpostlikes (comment_id, user_id, comment_likes, comment_dislikes) VALUES (%s, %s, %s, %s)" % (comment_id, user_id, 1 if comment_like else 0, 0 if comment_like else 1))
+                except IntegrityError:
+                    cursor.execute(
+                        "UPDATE tblcommentpostlikes SET comment_likes = %s, comment_dislikes = %s WHERE user_id = %s AND comment_id = %s",
+                        (1 if comment_like else 0, 0 if comment_like else 1, user_id, comment_id)
+                    )
+            
+            connection.commit()
+
+            # Fetch the updated like and dislike counts for this comment
+            cursor.execute("SELECT SUM(comment_likes) as comment_likes_count, SUM(comment_dislikes) as comment_dislikes_count FROM tblcommentpostlikes WHERE comment_id = %s", (comment_id,))
+            counts = cursor.fetchone()
+        comment_likes_count = 0 if counts["comment_likes_count"] is None else int(counts["comment_likes_count"])
+        comment_dislikes_count = 0 if counts["comment_dislikes_count"] is None else int(counts["comment_dislikes_count"])
+
+    return jsonify({"comment_likes": comment_likes_count, "comment_dislikes": comment_dislikes_count})
 
 
 if __name__ == '__main__':
